@@ -214,6 +214,61 @@ textarea {
 }
 textarea::placeholder { color:var(--muted); font-weight:500; }
 
+.ratioBox {
+  position:relative;
+  background:var(--panel);
+  border:1px solid var(--line);
+  transition:.25s;
+  user-select:none;
+}
+.ratioBox.open { border-color:var(--accent); box-shadow:var(--glow); }
+
+.ratioSelected {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  padding:13px 14px;
+  cursor:pointer;
+  font-size:.85rem;
+  font-weight:700;
+  letter-spacing:1.5px;
+  text-transform:uppercase;
+  color:var(--text);
+}
+.ratioSelected .arrow {
+  width:0; height:0;
+  border-left:5px solid transparent;
+  border-right:5px solid transparent;
+  border-top:6px solid var(--accent);
+  transition:transform .2s;
+  margin-left:8px;
+}
+.ratioBox.open .ratioSelected .arrow { transform:rotate(180deg); }
+.ratioSelected .val { color:var(--accent); text-shadow:var(--glow); }
+
+.ratioList {
+  display:none;
+  border-top:1px solid var(--line);
+  background:var(--panel2);
+}
+.ratioBox.open .ratioList { display:block; }
+
+.ratioItem {
+  padding:12px 14px;
+  font-size:.82rem;
+  font-weight:600;
+  letter-spacing:1.2px;
+  text-transform:uppercase;
+  color:var(--muted);
+  cursor:pointer;
+  border-bottom:1px solid var(--line);
+  transition:.15s;
+}
+.ratioItem:last-child { border-bottom:none; }
+.ratioItem:active { background:var(--panel); color:var(--accent); }
+.ratioItem.active { color:var(--accent); text-shadow:var(--glow); }
+.ratioItem.active::before { content:'● '; }
+
 .btn {
   font-family:inherit;
   font-weight:700;
@@ -253,7 +308,6 @@ body.light .btn.primary { color:#fff; box-shadow:0 0 20px rgba(0,119,182,.35); }
 
 .btn svg { width:15px; height:15px; flex-shrink:0; }
 
-/* === FIXED: preview now hugs its content === */
 .preview {
   background:var(--panel2);
   border:1px solid var(--line);
@@ -327,6 +381,22 @@ footer {
       <textarea id="userInput" placeholder="e.g. Ken from Street Fighter" spellcheck="false"></textarea>
     </div>
 
+    <div class="label">Aspect ratio</div>
+
+    <div class="ratioBox" id="ratioBox">
+      <div class="ratioSelected" id="ratioSelected">
+        <span>Ratio: <span class="val" id="ratioVal">Story 9:16</span></span>
+        <span class="arrow"></span>
+      </div>
+      <div class="ratioList" id="ratioList">
+        <div class="ratioItem" data-ratio="Square 1:1">Square 1:1</div>
+        <div class="ratioItem" data-ratio="Portrait 3:4">Portrait 3:4</div>
+        <div class="ratioItem active" data-ratio="Story 9:16">Story 9:16</div>
+        <div class="ratioItem" data-ratio="Landscape 4:3">Landscape 4:3</div>
+        <div class="ratioItem" data-ratio="Widescreen 16:9">Widescreen 16:9</div>
+      </div>
+    </div>
+
     <button class="btn primary" id="mainBtn">
       <svg id="mainIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
         <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
@@ -367,6 +437,12 @@ footer {
   const chatBtn = document.getElementById('chatBtn');
   const statusMsg = document.getElementById('statusMsg');
 
+  const ratioBox = document.getElementById('ratioBox');
+  const ratioSelected = document.getElementById('ratioSelected');
+  const ratioList = document.getElementById('ratioList');
+  const ratioVal = document.getElementById('ratioVal');
+  let selectedRatio = 'Story 9:16';
+
   let promptText = '';
   let isCopied = false;
 
@@ -382,20 +458,51 @@ footer {
   input.addEventListener('focus', () => inputBox.classList.add('focus'));
   input.addEventListener('blur', () => inputBox.classList.remove('focus'));
 
+  ratioSelected.addEventListener('click', (e) => {
+    e.stopPropagation();
+    ratioBox.classList.toggle('open');
+    if (navigator.vibrate) navigator.vibrate(6);
+  });
+
+  ratioList.addEventListener('click', (e) => {
+    const item = e.target.closest('.ratioItem');
+    if (!item) return;
+    selectedRatio = item.dataset.ratio;
+    ratioVal.textContent = selectedRatio;
+    document.querySelectorAll('.ratioItem').forEach(i => i.classList.remove('active'));
+    item.classList.add('active');
+    ratioBox.classList.remove('open');
+    if (navigator.vibrate) navigator.vibrate(10);
+  });
+
+  document.addEventListener('click', (e) => {
+    if (!ratioBox.contains(e.target)) ratioBox.classList.remove('open');
+  });
+
+  /* === BUILD PROMPT — fixed world rule === */
   function buildPrompt(raw){
     const userInput = raw.trim();
     const lower = userInput.toLowerCase();
     const hasWorld = /\b(world|universe|realm|setting|verse)\b/.test(lower);
 
-    let tail;
+    let worldPart;
+
     if (hasWorld) {
-      tail = '';
+      // user already wrote "world" — don't add one
+      worldPart = '';
     } else {
-      const nameOnly = userInput.split(/\bfrom\b/i)[0].trim();
-      tail = `, in ${nameOnly}'s world`;
+      // look for "from X"
+      const fromMatch = userInput.match(/\bfrom\s+(.+)$/i);
+      if (fromMatch && fromMatch[1].trim()) {
+        // use what comes after "from" as the world
+        worldPart = `, in ${fromMatch[1].trim()} world`;
+      } else {
+        // no "from" — use the character's own world
+        worldPart = `, in ${userInput}'s world`;
+      }
     }
 
-    return `Based on our conversation so far, create a ${userInput} inspired character visual that suits me${tail}, anime style, 9:16`;
+    return `Based on our conversation so far, create a ${userInput} inspired character visual that suits me${worldPart}, anime style, ${selectedRatio}`;
   }
 
   mainBtn.addEventListener('click', async () => {
@@ -475,7 +582,7 @@ footer {
 
   if ('serviceWorker' in navigator) {
     const swCode = `
-      const C = 'animus-prompt-v1';
+      const C = 'animus-prompt-v3';
       self.addEventListener('install', e => {
         e.waitUntil(caches.open(C).then(c => c.addAll(['/','./']).catch(()=>{})));
         self.skipWaiting();
